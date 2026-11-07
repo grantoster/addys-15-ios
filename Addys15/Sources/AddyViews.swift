@@ -69,6 +69,9 @@ struct Draft {
 
 enum AddyStep { case snap, tap, making, done, piggy }
 
+/// What the grown-up press-and-hold opens.
+enum GrownUpTarget: String, Identifiable { case settings, momMode; var id: String { rawValue } }
+
 struct AddyHome: View {
     @Environment(AppModel.self) private var model
     @State private var step: AddyStep = .snap
@@ -76,7 +79,7 @@ struct AddyHome: View {
     @State private var draft = Draft()
     @State private var finishedID: String?
     @State private var makeError: String?
-    @State private var showSettings = false
+    @State private var gate: GrownUpTarget?
     @State private var confirmStartOver = false
 
     var body: some View {
@@ -84,10 +87,10 @@ struct AddyHome: View {
             Theme.cream.ignoresSafeArea()
             switch step {
             case .snap:
-                SnapView(draft: $draft, onDone: { step = .tap; identify() }, onPiggy: openPiggy, onSettings: { showSettings = true },
+                SnapView(draft: $draft, onDone: { step = .tap; identify() }, onPiggy: openPiggy, onSettings: { gate = .settings }, onMomMode: { gate = .momMode },
                          onStartOver: startOver)
             case .tap:
-                TapView(draft: $draft, onBack: { step = .snap }, onMake: make, onSettings: { showSettings = true },
+                TapView(draft: $draft, onBack: { step = .snap }, onMake: make, onSettings: { gate = .settings }, onMomMode: { gate = .momMode },
                         onStartOver: startOver, onPiggy: openPiggy)
             case .making:
                 MakingView(error: makeError, retry: make, back: { step = .tap })
@@ -95,7 +98,7 @@ struct AddyHome: View {
                 if let id = finishedID, let item = model.items[id] {
                     DoneView(item: item, onNext: next, onFix: { step = .tap }, onPiggy: openPiggy)
                 } else {
-                    SnapView(draft: $draft, onDone: { step = .tap; identify() }, onPiggy: openPiggy, onSettings: { showSettings = true },
+                    SnapView(draft: $draft, onDone: { step = .tap; identify() }, onPiggy: openPiggy, onSettings: { gate = .settings }, onMomMode: { gate = .momMode },
                              onStartOver: startOver)
                 }
             case .piggy:
@@ -103,7 +106,7 @@ struct AddyHome: View {
             }
         }
         .modifier(ScaledForDevice())
-        .sheet(isPresented: $showSettings) { GrownUpGate() }
+        .sheet(item: $gate) { target in GrownUpGate(target: target) }
         .confirmationDialog("Start over with a new item?", isPresented: $confirmStartOver, titleVisibility: .visible) {
             Button("Start over", role: .destructive) { next() }
         } message: {
@@ -169,6 +172,7 @@ struct AddyHeader: View {
     var onBack: (() -> Void)?
     var onPiggy: (() -> Void)?
     var onSettings: (() -> Void)?
+    var onMomMode: (() -> Void)?
     var onStartOver: (() -> Void)?
     var body: some View {
         HStack {
@@ -207,6 +211,9 @@ struct AddyHeader: View {
                     if let onPiggy {
                         Button { onPiggy() } label: { Label("My piggy bank", systemImage: "dollarsign.circle") }
                     }
+                    if let onMomMode {
+                        Button { onMomMode() } label: { Label("Switch to Mom mode (grown-ups)", systemImage: "iphone") }
+                    }
                     if let onSettings {
                         Button { onSettings() } label: { Label("Settings (grown-ups)", systemImage: "gearshape") }
                     }
@@ -225,17 +232,22 @@ struct AddyHeader: View {
 
 /// Settings sit behind a 2-second press so Addy doesn't change them by accident.
 struct GrownUpGate: View {
+    var target: GrownUpTarget = .settings
+    @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     @State private var unlocked = false
     @State private var holding = false
 
     var body: some View {
-        if unlocked {
+        if unlocked && target == .settings {
             SettingsView()
+        } else if unlocked {
+            Color.clear.onAppear { dismiss(); model.switchRole(.mom) }
         } else {
             VStack(spacing: 24) {
                 Image(systemName: "lock.fill").font(.system(size: 56)).foregroundStyle(Theme.purple)
-                Text("Settings are for grown-ups").font(.kid(30, .semibold)).foregroundStyle(Theme.ink)
+                Text(target == .settings ? "Settings are for grown-ups" : "Mom mode is for grown-ups")
+                    .font(.kid(30, .semibold)).foregroundStyle(Theme.ink)
                 Text("Press and hold the button for 2 seconds.").font(.kid(18, .bold)).foregroundStyle(Theme.muted)
                 Text(holding ? "Keep holding…" : "Hold to open")
                     .font(.kid(22, .heavy)).foregroundStyle(.white)
@@ -260,6 +272,7 @@ struct SnapView: View {
     var onDone: () -> Void
     var onPiggy: () -> Void
     var onSettings: () -> Void
+    var onMomMode: () -> Void
     var onStartOver: () -> Void
     @Environment(\.k) private var k
     @StateObject private var camera = CameraModel()
@@ -274,7 +287,7 @@ struct SnapView: View {
 
     var body: some View {
         VStack(spacing: 22 * k) {
-            AddyHeader(onPiggy: onPiggy, onSettings: onSettings, onStartOver: onStartOver)
+            AddyHeader(onPiggy: onPiggy, onSettings: onSettings, onMomMode: onMomMode, onStartOver: onStartOver)
             ProgressDots(step: 1)
             Text(allTaken ? "Looks good!" : "Take 3 pictures")
                 .font(.kid(44 * k, .semibold)).foregroundStyle(Theme.ink)
@@ -449,6 +462,7 @@ struct TapView: View {
     var onBack: () -> Void
     var onMake: () -> Void
     var onSettings: () -> Void
+    var onMomMode: () -> Void
     var onStartOver: () -> Void
     var onPiggy: () -> Void
     @Environment(\.k) private var k
@@ -459,7 +473,7 @@ struct TapView: View {
     var body: some View {
         VStack(spacing: 0) {
             VStack(spacing: 22 * k) {
-                AddyHeader(onBack: onBack, onPiggy: onPiggy, onSettings: onSettings, onStartOver: onStartOver)
+                AddyHeader(onBack: onBack, onPiggy: onPiggy, onSettings: onSettings, onMomMode: onMomMode, onStartOver: onStartOver)
                 ProgressDots(step: 2)
             }
             .padding(.horizontal, 48 * k).padding(.top, 24 * k).padding(.bottom, 18 * k)
@@ -874,7 +888,7 @@ struct DoneView: View {
         return HStack(spacing: 14 * k) {
             Image(systemName: pending ? "arrow.triangle.2.circlepath" : "iphone").font(.system(size: 30 * k, weight: .semibold))
             VStack(alignment: .leading, spacing: 2) {
-                Text(pending ? "Sending to Mom's phone…" : "Sent to Mom's phone to post!").font(.kid(22 * k, .heavy))
+                Text(pending ? "Sending to Mom…" : "Sent to Mom to post!").font(.kid(22 * k, .heavy))
                 if pending, let p = model.syncProblem { Text(p).font(.kid(16 * k, .bold)) }
             }
             Spacer()

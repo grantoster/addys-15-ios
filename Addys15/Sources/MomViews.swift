@@ -14,7 +14,13 @@ struct MomHome: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     header
-                    Text(title).font(.kid(30, .semibold)).foregroundStyle(Theme.ink)
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(title).font(.kid(30, .semibold)).foregroundStyle(Theme.ink).lineLimit(1).minimumScaleFactor(0.7)
+                        Spacer()
+                        Text("Addy: \(Money.full(model.earnedCents))").font(.kid(15, .heavy)).foregroundStyle(Theme.ink)
+                            .padding(.horizontal, 12).padding(.vertical, 6)
+                            .background(Capsule().fill(Color.white)).overlay(Capsule().strokeBorder(Theme.yellow, lineWidth: 2))
+                    }
                     tabs
                     let list = model.items(in: tab)
                     if list.isEmpty {
@@ -58,9 +64,11 @@ struct MomHome: View {
         HStack {
             Text("Addy's 15%").font(.kid(22, .heavy)).foregroundStyle(Theme.purple)
             Spacer()
-            Text("Addy: \(Money.full(model.earnedCents))").font(.kid(15, .heavy)).foregroundStyle(Theme.ink)
-                .padding(.horizontal, 12).padding(.vertical, 6)
-                .background(Capsule().fill(Color.white)).overlay(Capsule().strokeBorder(Theme.yellow, lineWidth: 2))
+            Button { model.switchRole(.addy) } label: {
+                Label("Kid mode", systemImage: "camera.fill").font(.kid(14, .heavy))
+                    .padding(.horizontal, 10).frame(minHeight: 44)
+            }
+            .accessibilityLabel("Switch to Addy's kid mode")
             Button { Task { await model.refresh() } } label: {
                 Image(systemName: "arrow.clockwise").font(.system(size: 18, weight: .bold)).frame(width: 44, height: 44)
             }
@@ -157,8 +165,8 @@ struct MomHome: View {
             Image(systemName: model.syncProblem == nil ? "arrow.triangle.2.circlepath" : "exclamationmark.icloud")
             Group {
                 if let p = model.syncProblem { Text(p) }
-                else if let d = model.lastSync { Text("Synced with Addy's iPad \(d.formatted(.relative(presentation: .named)))") }
-                else { Text("Syncing with Addy's iPad…") }
+                else if let d = model.lastSync { Text("Synced \(d.formatted(.relative(presentation: .named)))") }
+                else { Text("Syncing…") }
             }
             .font(.kid(14, .bold))
             Spacer()

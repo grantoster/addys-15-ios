@@ -37,6 +37,18 @@ struct CloudSync {
         return out
     }
 
+    func record(_ name: String) async throws -> CKRecord? { try await fetch([name])[name] }
+    func newRecord(type: String, name: String) -> CKRecord { CKRecord(recordType: type, recordID: CKRecord.ID(recordName: name)) }
+
+    /// Saves only if nobody changed the record since it was read; otherwise throws a conflict to re-read and retry.
+    func saveIfUnchanged(_ rec: CKRecord) async throws {
+        let (results, _) = try await db.modifyRecords(saving: [rec], deleting: [], savePolicy: .ifServerRecordUnchanged, atomically: false)
+        for (_, r) in results {
+            if case .failure(let e) = r { throw e }
+        }
+    }
+    static func isConflict(_ e: Error) -> Bool { (e as? CKError)?.code == .serverRecordChanged }
+
     func saveJSON(type: String, name: String, json: String) async throws {
         let rec = CKRecord(recordType: type, recordID: CKRecord.ID(recordName: name))
         rec["json"] = json
@@ -72,7 +84,7 @@ struct CloudSync {
                 return "Can't reach iCloud right now. It will sync when it's back online."
             case .quotaExceeded: return "iCloud storage for the app is full."
             case .permissionFailure:
-                return "This family code is already used by another Apple ID for this role. Make a new code in Settings on one device, then type it on the other."
+                return "iCloud didn't allow this change. Make a new code in Settings on one device, then type it on the other."
             default: break
             }
         }

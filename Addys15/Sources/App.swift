@@ -136,7 +136,7 @@ struct SettingsView: View {
             Form {
                 Section("This device") {
                     LabeledContent("Used by", value: model.role == .addy ? "Addy" : "Mom")
-                    Button("Switch to \(model.role == .addy ? "Mom" : "Addy")") { confirmSwitch = true }
+                    Button("Switch to \(model.role == .addy ? "Mom mode" : "Addy's kid mode")") { confirmSwitch = true }
                 }
                 Section {
                     LabeledContent("Family code") {
@@ -155,7 +155,7 @@ struct SettingsView: View {
                         }
                     }
                 } header: { Text("Pairing") } footer: {
-                    Text("Both devices need the same code. They sync through iCloud, so each one must be signed in to iCloud.")
+                    Text("Every device that uses this code shares the same items. Each one must be signed in to iCloud. One device can also do both jobs by switching modes.")
                 }
                 Section {
                     LabeledContent("Status") {
@@ -207,7 +207,7 @@ struct SettingsView: View {
                     dismiss()
                 }
             } message: {
-                Text("Only for setting up a different device. A family code works with one iPad for Addy and one iPhone for Mom; switching a device that already synced can stop its updates.")
+                Text("Everything stays. You can switch back any time: Mom mode has a Kid mode button, and kid mode has it in the ⋯ menu.")
             }
         }
     }

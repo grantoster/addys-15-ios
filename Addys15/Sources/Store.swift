@@ -54,6 +54,12 @@ final class AppModel {
         Task { await refresh() }
     }
 
+    /// Kid mode and grown-up mode on the same device; the family code and all data stay.
+    func switchRole(_ r: Role) {
+        guard let code else { return }
+        setUp(role: r, code: code)
+    }
+
     func setPickupLine(_ s: String) {
         pickupLine = s
         defaults.set(s, forKey: "pickupLine")
@@ -190,14 +196,10 @@ final class AppModel {
             }
             if let s = recs["mom-\(code)"]?["json"] as? String,
                let remote = try? sharedDecoder.decode(Ledger.self, from: Data(s.utf8)) {
-                if role == .mom {
-                    ledger.merge(remote)
-                    // If this device has newer entries than the server, send them.
-                    if ledger.statuses.contains(where: { id, e in (remote.statuses[id]?.updatedAt ?? .distantPast) < e.updatedAt }) {
-                        ledgerDirty = true
-                    }
-                } else {
-                    ledger = remote
+                ledger.merge(remote)
+                // If this device has newer entries than the server, send them.
+                if ledger.statuses.contains(where: { id, e in (remote.statuses[id]?.updatedAt ?? .distantPast) < e.updatedAt }) {
+                    ledgerDirty = true
                 }
             }
             // Fetch items that are new or changed (never overwrite Addy's own unsent edits).
@@ -226,12 +228,13 @@ final class AppModel {
         } catch {
             syncProblem = CloudSync.friendly(error)
         }
-        if role == .addy, !pendingUploads.isEmpty { await pushItems() }
-        if role == .mom, ledgerDirty { await pushLedger() }
+        // Whatever this device changed gets sent, whichever mode it's in now.
+        if !pendingUploads.isEmpty { await pushItems() }
+        if ledgerDirty { await pushLedger() }
     }
 
     private func pushItems() async {
-        guard role == .addy, let code, !pushingItems else { return }
+        guard let code, !pushingItems else { return }
         pushingItems = true
         defer { pushingItems = false }
         do {
@@ -252,30 +255,49 @@ final class AppModel {
         }
     }
 
-    /// Re-reads the server copy first, so a reinstalled app never wipes the list.
+    /// Re-reads the server copy and merges before saving, and retries if another device saved in between,
+    /// so no device (or reinstall) ever wipes items another one added.
     private func saveAddyIndex(_ code: String) async throws {
         let name = "addy-\(code)"
-        if let s = try await cloud.fetch([name])[name]?["json"] as? String,
-           let remote = try? sharedDecoder.decode([String: Double].self, from: Data(s.utf8)) {
-            for (id, t) in remote where (addyIndex[id] ?? 0) < t { addyIndex[id] = t }
+        for attempt in 0..<5 {
+            let existing = try await cloud.record(name)
+            if let s = existing?["json"] as? String,
+               let remote = try? sharedDecoder.decode([String: Double].self, from: Data(s.utf8)) {
+                for (id, t) in remote where (addyIndex[id] ?? 0) < t { addyIndex[id] = t }
+            }
+            let rec = existing ?? cloud.newRecord(type: CloudSync.addyType, name: name)
+            rec["json"] = String(decoding: try sharedEncoder.encode(addyIndex), as: UTF8.self)
+            do {
+                try await cloud.saveIfUnchanged(rec)
+                return
+            } catch let e where CloudSync.isConflict(e) && attempt < 4 {
+                continue
+            }
         }
-        let json = String(decoding: try sharedEncoder.encode(addyIndex), as: UTF8.self)
-        try await cloud.saveJSON(type: CloudSync.addyType, name: name, json: json)
     }
 
     private func pushLedger() async {
-        guard role == .mom, let code, !pushingLedger else { return }
+        guard let code, !pushingLedger else { return }
         pushingLedger = true
         defer { pushingLedger = false }
+        let name = "mom-\(code)"
         do {
-            let name = "mom-\(code)"
-            if let s = try await cloud.fetch([name])[name]?["json"] as? String,
-               let remote = try? sharedDecoder.decode(Ledger.self, from: Data(s.utf8)) {
-                ledger.merge(remote)
+            for attempt in 0..<5 {
+                let existing = try await cloud.record(name)
+                if let s = existing?["json"] as? String,
+                   let remote = try? sharedDecoder.decode(Ledger.self, from: Data(s.utf8)) {
+                    ledger.merge(remote)
+                }
+                let rec = existing ?? cloud.newRecord(type: CloudSync.momType, name: name)
+                rec["json"] = String(decoding: try sharedEncoder.encode(ledger), as: UTF8.self)
+                do {
+                    try await cloud.saveIfUnchanged(rec)
+                    break
+                } catch let e where CloudSync.isConflict(e) && attempt < 4 {
+                    continue
+                }
             }
             ledgerDirty = false
-            let json = String(decoding: try sharedEncoder.encode(ledger), as: UTF8.self)
-            try await cloud.saveJSON(type: CloudSync.momType, name: name, json: json)
             syncProblem = nil
             lastSync = Date()
             persist()
