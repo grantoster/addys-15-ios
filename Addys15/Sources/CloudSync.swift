@@ -72,7 +72,7 @@ struct CloudSync {
                 return "Can't reach iCloud right now. It will sync when it's back online."
             case .quotaExceeded: return "iCloud storage for the app is full."
             case .permissionFailure:
-                return "This family code is already used by another Apple ID for this role. Set up a new code on both devices (Settings, then Pairing)."
+                return "This family code is already used by another Apple ID for this role. Make a new code in Settings on one device, then type it on the other."
             default: break
             }
         }

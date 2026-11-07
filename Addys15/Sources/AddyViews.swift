@@ -598,7 +598,10 @@ struct FlawCameraSheet: View {
             HStack {
                 Text("Show the spot up close").font(.kid(30 * k, .semibold)).foregroundStyle(Theme.ink)
                 Spacer()
-                Button("Cancel") { dismiss() }.font(.kid(20, .heavy)).foregroundStyle(Theme.purple).frame(minWidth: 44, minHeight: 44)
+                Button { dismiss() } label: {
+                    Text("Cancel").font(.kid(20, .heavy)).foregroundStyle(Theme.purple)
+                        .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+                }
             }
             ZStack {
                 RoundedRectangle(cornerRadius: 28).fill(Theme.ink)

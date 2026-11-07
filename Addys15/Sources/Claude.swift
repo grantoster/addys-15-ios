@@ -205,7 +205,7 @@ struct Claude {
         let h = host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
         var p = c.path.lowercased()
         while p.hasSuffix("/") { p.removeLast() }
-        return h + p
+        return h + p + (c.percentEncodedQuery.map { "?" + $0 } ?? "")
     }
 
     /// The JSON object in a reply (from the first "{" to the last "}").

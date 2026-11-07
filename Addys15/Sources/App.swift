@@ -144,6 +144,9 @@ struct SettingsView: View {
                             .textSelection(.enabled)
                     }
                     ShareLink(item: "Addy's 15% family code: \(Pairing.pretty(model.code ?? ""))") { Label("Share the code", systemImage: "square.and.arrow.up") }
+                    Button("Make a new code") {
+                        if let r = model.role { model.setUp(role: r, code: Pairing.newCode()) }
+                    }
                     TextField("Use a different code", text: $newCode).textInputAutocapitalization(.characters).autocorrectionDisabled()
                     if Pairing.normalize(newCode).count == 6 {
                         Button("Connect to \(Pairing.pretty(Pairing.normalize(newCode)))") {
