@@ -32,4 +32,4 @@ the app.
 - Prices: a suggestion only when Claude found at least 3 real prices online; it's the median,
   rounded to the dollar (halves up). Otherwise Mom sets the price.
 - Addy's share: 15% of each sale, rounded to the cent (halves up); her total is the sum of those.
-- Settings: Mom's gear button; on Addy's screens, press and hold the "Addy's 15%" title for 2 seconds.
+- Menu (⋯) on Addy's screens: Start over, My piggy bank, Settings (grown-ups: press and hold 2 seconds). Mom: gear button.

@@ -120,7 +120,7 @@ struct WelcomeView: View {
     }
 }
 
-// MARK: - Settings (Mom's gear button; on Addy's screens, press and hold the title for 2 seconds)
+// MARK: - Settings (Mom's gear button; on Addy's screens, the ⋯ menu then a 2-second hold)
 
 struct SettingsView: View {
     @Environment(AppModel.self) private var model

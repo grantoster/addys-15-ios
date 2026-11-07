@@ -77,32 +77,45 @@ struct AddyHome: View {
     @State private var finishedID: String?
     @State private var makeError: String?
     @State private var showSettings = false
+    @State private var confirmStartOver = false
 
     var body: some View {
         ZStack {
             Theme.cream.ignoresSafeArea()
             switch step {
             case .snap:
-                SnapView(draft: $draft, onDone: { step = .tap; identify() }, onPiggy: openPiggy, onSettings: { showSettings = true })
+                SnapView(draft: $draft, onDone: { step = .tap; identify() }, onPiggy: openPiggy, onSettings: { showSettings = true },
+                         onStartOver: startOver)
             case .tap:
-                TapView(draft: $draft, onBack: { step = .snap }, onMake: make, onSettings: { showSettings = true })
+                TapView(draft: $draft, onBack: { step = .snap }, onMake: make, onSettings: { showSettings = true },
+                        onStartOver: startOver, onPiggy: openPiggy)
             case .making:
                 MakingView(error: makeError, retry: make, back: { step = .tap })
             case .done:
                 if let id = finishedID, let item = model.items[id] {
                     DoneView(item: item, onNext: next, onFix: { step = .tap }, onPiggy: openPiggy)
                 } else {
-                    SnapView(draft: $draft, onDone: { step = .tap; identify() }, onPiggy: openPiggy, onSettings: { showSettings = true })
+                    SnapView(draft: $draft, onDone: { step = .tap; identify() }, onPiggy: openPiggy, onSettings: { showSettings = true },
+                             onStartOver: startOver)
                 }
             case .piggy:
                 PiggyView(onBack: { step = stepBeforePiggy })
             }
         }
         .modifier(ScaledForDevice())
-        .sheet(isPresented: $showSettings) { SettingsView() }
+        .sheet(isPresented: $showSettings) { GrownUpGate() }
+        .confirmationDialog("Start over with a new item?", isPresented: $confirmStartOver, titleVisibility: .visible) {
+            Button("Start over", role: .destructive) { next() }
+        } message: {
+            Text("The pictures and answers for this item will be cleared.")
+        }
     }
 
     private func openPiggy() { stepBeforePiggy = step; step = .piggy }
+
+    private func startOver() {
+        if draft.photos.isEmpty && draft.kind == nil { next() } else { confirmStartOver = true }
+    }
 
     private func next() {
         draft = Draft()
@@ -156,6 +169,7 @@ struct AddyHeader: View {
     var onBack: (() -> Void)?
     var onPiggy: (() -> Void)?
     var onSettings: (() -> Void)?
+    var onStartOver: (() -> Void)?
     var body: some View {
         HStack {
             if let onBack {
@@ -168,8 +182,7 @@ struct AddyHeader: View {
             Text("Addy's 15%")
                 .font(.kid((onBack == nil ? 40 : 32) * k, .heavy))
                 .foregroundStyle(Theme.purple)
-                .onLongPressGesture(minimumDuration: 2) { onSettings?() }
-                .accessibilityHint(onSettings == nil ? "" : "Grown-ups: press and hold for 2 seconds for settings")
+                .lineLimit(1).minimumScaleFactor(0.7)
             Spacer()
             if let onPiggy {
                 Button(action: onPiggy) {
@@ -183,9 +196,59 @@ struct AddyHeader: View {
                     .overlay(Capsule().strokeBorder(Theme.yellow, lineWidth: 3))
                 }
                 .accessibilityLabel("My piggy bank, \(Money.full(model.earnedCents))")
-            } else if onBack != nil {
+            } else if onBack != nil && onSettings == nil && onStartOver == nil {
                 Spacer().frame(width: 110 * k)
             }
+            if onSettings != nil || onStartOver != nil {
+                Menu {
+                    if let onStartOver {
+                        Button { onStartOver() } label: { Label("Start over", systemImage: "arrow.counterclockwise") }
+                    }
+                    if let onPiggy {
+                        Button { onPiggy() } label: { Label("My piggy bank", systemImage: "dollarsign.circle") }
+                    }
+                    if let onSettings {
+                        Button { onSettings() } label: { Label("Settings (grown-ups)", systemImage: "gearshape") }
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle.fill")
+                        .font(.system(size: 44 * k, weight: .semibold))
+                        .foregroundStyle(Theme.purple)
+                        .frame(minWidth: 56, minHeight: 56)
+                        .contentShape(Rectangle())
+                }
+                .accessibilityLabel("Menu")
+            }
+        }
+    }
+}
+
+/// Settings sit behind a 2-second press so Addy doesn't change them by accident.
+struct GrownUpGate: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var unlocked = false
+    @State private var holding = false
+
+    var body: some View {
+        if unlocked {
+            SettingsView()
+        } else {
+            VStack(spacing: 24) {
+                Image(systemName: "lock.fill").font(.system(size: 56)).foregroundStyle(Theme.purple)
+                Text("Settings are for grown-ups").font(.kid(30, .semibold)).foregroundStyle(Theme.ink)
+                Text("Press and hold the button for 2 seconds.").font(.kid(18, .bold)).foregroundStyle(Theme.muted)
+                Text(holding ? "Keep holding…" : "Hold to open")
+                    .font(.kid(22, .heavy)).foregroundStyle(.white)
+                    .frame(width: 260, height: 80)
+                    .background(Capsule().fill(holding ? Theme.purpleDark : Theme.purple))
+                    .onLongPressGesture(minimumDuration: 2, pressing: { holding = $0 }) { unlocked = true }
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityAction { unlocked = true }
+                Button("Cancel") { dismiss() }.font(.kid(18, .heavy)).foregroundStyle(Theme.purple).frame(minHeight: 44)
+            }
+            .padding(32)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Theme.cream.ignoresSafeArea())
         }
     }
 }
@@ -197,6 +260,7 @@ struct SnapView: View {
     var onDone: () -> Void
     var onPiggy: () -> Void
     var onSettings: () -> Void
+    var onStartOver: () -> Void
     @Environment(\.k) private var k
     @StateObject private var camera = CameraModel()
     @State private var retake: Int?
@@ -210,7 +274,7 @@ struct SnapView: View {
 
     var body: some View {
         VStack(spacing: 22 * k) {
-            AddyHeader(onPiggy: onPiggy, onSettings: onSettings)
+            AddyHeader(onPiggy: onPiggy, onSettings: onSettings, onStartOver: onStartOver)
             ProgressDots(step: 1)
             Text(allTaken ? "Looks good!" : "Take 3 pictures")
                 .font(.kid(44 * k, .semibold)).foregroundStyle(Theme.ink)
@@ -385,6 +449,8 @@ struct TapView: View {
     var onBack: () -> Void
     var onMake: () -> Void
     var onSettings: () -> Void
+    var onStartOver: () -> Void
+    var onPiggy: () -> Void
     @Environment(\.k) private var k
     @State private var editingBrand = false
     @State private var showFlawCamera = false
@@ -393,7 +459,7 @@ struct TapView: View {
     var body: some View {
         VStack(spacing: 0) {
             VStack(spacing: 22 * k) {
-                AddyHeader(onBack: onBack, onSettings: onSettings)
+                AddyHeader(onBack: onBack, onPiggy: onPiggy, onSettings: onSettings, onStartOver: onStartOver)
                 ProgressDots(step: 2)
             }
             .padding(.horizontal, 48 * k).padding(.top, 24 * k).padding(.bottom, 18 * k)
