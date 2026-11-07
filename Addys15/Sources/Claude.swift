@@ -132,7 +132,7 @@ struct Claude {
               let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               let title = obj["title"] as? String, let desc = obj["description"] as? String else { throw ClaudeError.badReply }
         let comps: [Comp] = (obj["comps"] as? [[String: Any]] ?? []).compactMap { c in
-            let price: Double? = (c["price"] as? Double) ?? (c["price"] as? Int).map(Double.init)
+            let price: Double? = (c["price"] as? Double) ?? (c["price"] as? Int).map { Double($0) }
                 ?? (c["price"] as? String).flatMap { Money.parse($0) }.map { Double($0) / 100 }
             guard let p = price, p > 0 else { return nil }
             return Comp(title: c["title"] as? String ?? "", priceCents: Money.cents(p),
