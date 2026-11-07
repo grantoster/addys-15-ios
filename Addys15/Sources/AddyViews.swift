@@ -284,6 +284,10 @@ struct SnapView: View {
     private let names = ["front", "back", "tag"]
     private var target: Int { retake ?? min(draft.photos.count, 2) }
     private var allTaken: Bool { draft.photosDone && retake == nil }
+    private var tagMode: Bool { target == 2 && !allTaken }
+    /// The tag box, as a share of the camera view; the tag photo is cropped to exactly this box.
+    private let tagBox = CGSize(width: 0.72, height: 0.42)
+    @State private var previewSize: CGSize = .zero
 
     var body: some View {
         VStack(spacing: 22 * k) {
@@ -298,6 +302,9 @@ struct SnapView: View {
                 switch camera.state {
                 case .running, .starting:
                     CameraPreview(camera: camera).clipShape(RoundedRectangle(cornerRadius: 36 * k))
+                        .background(GeometryReader { g in
+                            Color.clear.onAppear { previewSize = g.size }.onChange(of: g.size) { _, s in previewSize = s }
+                        })
                 case .denied:
                     noCamera("Camera is turned off for this app. A grown-up can turn it on in Settings.")
                 case .unavailable:
@@ -311,12 +318,21 @@ struct SnapView: View {
                 .padding(.horizontal, 28 * k).padding(.vertical, 14 * k)
                 .background(Capsule().fill(Color.white.opacity(0.94)))
                 .frame(maxHeight: .infinity, alignment: .top).padding(.top, 28 * k)
-                if target == 2 && !allTaken {
-                    Text("Put the tag in the box")
-                        .font(.kid(22 * k, .bold)).foregroundStyle(Theme.yellowLight)
-                        .frame(width: 300 * k, height: 110 * k)
-                        .overlay(RoundedRectangle(cornerRadius: 20 * k).strokeBorder(Theme.yellow, style: StrokeStyle(lineWidth: 4, dash: [10, 8])))
-                        .frame(maxHeight: .infinity, alignment: .bottom).padding(.bottom, 30 * k)
+                if tagMode {
+                    GeometryReader { g in
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 20 * k)
+                                .strokeBorder(Theme.yellow, style: StrokeStyle(lineWidth: 5, dash: [12, 8]))
+                                .frame(width: g.size.width * tagBox.width, height: g.size.height * tagBox.height)
+                            Text("Fill the box with the tag")
+                                .font(.kid(22 * k, .heavy)).foregroundStyle(Theme.ink)
+                                .padding(.horizontal, 16 * k).padding(.vertical, 8 * k)
+                                .background(Capsule().fill(Theme.yellow))
+                                .offset(y: g.size.height * tagBox.height / 2 + 34 * k)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
+                    .allowsHitTesting(false)
                 }
             }
             .frame(maxHeight: .infinity)
@@ -349,8 +365,9 @@ struct SnapView: View {
             .frame(height: 132 * k)
         }
         .padding(.horizontal, 48 * k).padding(.vertical, 24 * k)
-        .onAppear { camera.start() }
+        .onAppear { camera.start(); camera.setZoom(tagMode ? 2 : 1) }
         .onDisappear { camera.stop() }
+        .onChange(of: tagMode) { _, isTag in camera.setZoom(isTag ? 2 : 1) }
         .onChange(of: pickerItem) { _, item in
             guard let item else { return }
             Task {
@@ -429,14 +446,28 @@ struct SnapView: View {
         guard !busy else { return }
         busy = true
         Task {
+            let isTag = tagMode
             if let img = await camera.capture() {
                 withAnimation(.easeOut(duration: 0.08)) { flash = true }
-                add(img)
+                add(isTag ? cropToTagBox(img) : img)
                 try? await Task.sleep(for: .milliseconds(120))
                 withAnimation { flash = false }
             }
             busy = false
         }
+    }
+
+    /// Keeps only what was inside the tag box. The preview fills its frame (aspect fill), so the box maps
+    /// to a centered rectangle of the photo scaled by the same factor.
+    private func cropToTagBox(_ raw: UIImage) -> UIImage {
+        let up = raw.resized(maxSide: max(raw.size.width, raw.size.height))
+        guard previewSize.width > 0, previewSize.height > 0, let cg = up.cgImage else { return up }
+        let W = CGFloat(cg.width), H = CGFloat(cg.height)
+        let s = max(previewSize.width / W, previewSize.height / H)
+        let w = previewSize.width * tagBox.width / s, h = previewSize.height * tagBox.height / s
+        let rect = CGRect(x: (W - w) / 2, y: (H - h) / 2, width: w, height: h).integral
+            .intersection(CGRect(x: 0, y: 0, width: W, height: H))
+        return cg.cropping(to: rect).map { UIImage(cgImage: $0) } ?? up
     }
 
     private func add(_ raw: UIImage) {

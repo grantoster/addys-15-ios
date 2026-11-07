@@ -31,6 +31,16 @@ final class CameraModel: NSObject, ObservableObject, AVCapturePhotoCaptureDelega
         }
     }
 
+    /// Zooms in (e.g. 2x for the tag) without moving the iPad closer.
+    func setZoom(_ factor: CGFloat) {
+        queue.async {
+            guard let dev = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
+                  (try? dev.lockForConfiguration()) != nil else { return }
+            dev.videoZoomFactor = max(1, min(factor, dev.activeFormat.videoMaxZoomFactor))
+            dev.unlockForConfiguration()
+        }
+    }
+
     func stop() {
         queue.async { if self.session.isRunning { self.session.stopRunning() } }
     }
