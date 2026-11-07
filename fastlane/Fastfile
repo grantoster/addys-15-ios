@@ -1,0 +1,70 @@
+default_platform(:ios)
+
+platform :ios do
+  desc "Build, sign and upload Addy's 15% to TestFlight"
+  lane :beta do
+    %w[ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_PATH APPLE_TEAM_ID BUNDLE_ID].each do |k|
+      UI.user_error!("Missing #{k}") if ENV[k].to_s.empty?
+    end
+
+    # Temporary keychain on the CI Mac for this run's signing certificate.
+    setup_ci(keychain_name: "addy_ci")
+    keychain = File.expand_path("~/Library/Keychains/addy_ci-db")
+
+    api_key = app_store_connect_api_key(
+      key_id: ENV["ASC_KEY_ID"],
+      issuer_id: ENV["ASC_ISSUER_ID"],
+      key_filepath: ENV["ASC_KEY_PATH"],
+      in_house: false
+    )
+    team = ENV["APPLE_TEAM_ID"]
+    bundle = ENV["BUNDLE_ID"]
+    profile = "Addys15CI#{Time.now.to_i}" # unique per run; old ones die with their certificate
+    build_number = (Time.now.to_i / 60).to_s
+    UI.message("CURRENT_PROJECT_VERSION=#{build_number}")
+    cert_id = nil
+
+    begin
+      # A fresh Apple Distribution certificate for this run only, revoked at the end so the
+      # account never hits Apple's certificate limit. Revoking does not affect uploaded builds.
+      get_certificates(api_key: api_key, force: true, generate_apple_certs: true,
+                       keychain_path: keychain, keychain_password: "")
+      cert_id = lane_context[SharedValues::CERT_CERTIFICATE_ID]
+
+      # An App Store provisioning profile for that certificate (no registered devices needed).
+      get_provisioning_profile(api_key: api_key, app_identifier: bundle, force: true,
+                               cert_id: cert_id, provisioning_name: profile)
+      profile = lane_context[SharedValues::SIGH_NAME] || profile
+
+      build_app(
+        project: "Addys15.xcodeproj",
+        scheme: "Addys15",
+        configuration: "Release",
+        export_method: "app-store",
+        export_team_id: team,
+        clean: true,
+        output_directory: "build",
+        output_name: "Addys15.ipa",
+        xcargs: "CURRENT_PROJECT_VERSION=#{build_number} DEVELOPMENT_TEAM=#{team} " \
+                "CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY='Apple Distribution' " \
+                "PROVISIONING_PROFILE_SPECIFIER='#{profile}'",
+        export_options: { signingStyle: "manual", provisioningProfiles: { bundle => profile } }
+      )
+
+      upload_to_testflight(
+        api_key: api_key,
+        ipa: "build/Addys15.ipa",
+        skip_waiting_for_build_processing: true
+      )
+    ensure
+      if cert_id
+        begin
+          Spaceship::ConnectAPI::Certificate.get(certificate_id: cert_id).delete!
+          UI.message("Revoked this run's signing certificate")
+        rescue => e
+          UI.important("Could not revoke certificate #{cert_id}: #{e.message}")
+        end
+      end
+    end
+  end
+end

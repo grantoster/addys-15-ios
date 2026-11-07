@@ -1,0 +1,66 @@
+name: iOS
+
+on:
+  workflow_dispatch:
+  schedule:
+    # A fresh TestFlight build on the 1st of each month, so the app never hits TestFlight's 90-day expiry.
+    - cron: '41 15 1 * *'
+  push:
+    branches: [main]
+    paths-ignore: [README.md, cloudkit/**]
+
+concurrency:
+  group: testflight
+  cancel-in-progress: false
+
+jobs:
+  testflight:
+    runs-on: macos-15-intel
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode 26 (required by App Store Connect)
+        run: |
+          X=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)
+          echo "Using $X"; sudo xcode-select -s "$X"; xcodebuild -version
+
+      - name: Safety checks (no committed keys, no ad or tracking code)
+        run: |
+          set -e
+          if grep -RnE "sk-ant-[A-Za-z0-9_-]{10,}" --exclude-dir=.git .; then
+            echo "::error::An Anthropic key is committed to the repo. Remove it and rotate the key."; exit 1
+          fi
+          if grep -RniE "admob|googleads|FBSDK|firebase|appsflyer|mixpanel" Addys15/Sources; then
+            echo "::error::No ad or tracking code allowed."; exit 1
+          fi
+          echo "Safety checks passed"
+
+      - name: Build in the Claude key (if the repo has one)
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python3 scripts/write_secrets.py
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          BUNDLE_ID: ${{ secrets.BUNDLE_ID }}
+        run: xcodegen generate
+
+      - name: Build, sign and upload to TestFlight
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          BUNDLE_ID: ${{ secrets.BUNDLE_ID }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          set -e
+          python3 scripts/write_key.py "$RUNNER_TEMP/AuthKey.p8"
+          openssl pkey -in "$RUNNER_TEMP/AuthKey.p8" -noout && echo "key parses as a valid private key"
+          export ASC_KEY_PATH="$RUNNER_TEMP/AuthKey.p8"
+          which fastlane || sudo gem install fastlane -N
+          fastlane beta

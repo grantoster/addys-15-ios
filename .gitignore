@@ -1,0 +1,7 @@
+*.xcodeproj/
+Addys15/Info.plist
+build/
+fastlane/report.xml
+fastlane/README.md
+*.p8
+.DS_Store
