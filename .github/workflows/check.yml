@@ -1,11 +1,9 @@
 name: Compile check
 
 # Builds for the iOS Simulator without signing, so code errors show up without any Apple secrets.
+# Manual only: every push already builds in the iOS workflow, and macOS minutes are billed 10x on private repos.
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths: [Addys15/**, project.yml, .github/workflows/check.yml]
 
 jobs:
   build:
