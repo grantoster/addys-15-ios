@@ -312,7 +312,7 @@ struct PostView: View {
                     Text(price.map(Money.price) ?? "Set price").font(.kid(17, .heavy)).foregroundStyle(Theme.ink)
                     Image(systemName: "pencil").font(.system(size: 13, weight: .bold)).foregroundStyle(Theme.purple)
                 }
-                .frame(minHeight: 32)
+                .frame(minHeight: 44)
             }
             .accessibilityLabel("Price \(price.map(Money.price) ?? "not set"). Tap to change.")
         }
@@ -430,7 +430,7 @@ struct SoldSheet: View {
             .padding(16)
             .background(RoundedRectangle(cornerRadius: 18).fill(Theme.yellowLight))
             .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Theme.yellow, lineWidth: 2))
-            Text("Her piggy bank updates on her iPad right away, with a little celebration.")
+            Text("Her piggy bank updates on her iPad within a few seconds while her app is open, with a little celebration.")
                 .font(.kid(14, .bold)).foregroundStyle(Theme.muted)
             Spacer(minLength: 0)
             Button("Mark sold") {
@@ -444,6 +444,6 @@ struct SoldSheet: View {
         .padding(20)
         .background(Theme.cream.ignoresSafeArea())
         .presentationDetents([.large])
-        .onAppear { picked = choices.first }
+        .onAppear { if listed != nil { picked = choices.first } }
     }
 }

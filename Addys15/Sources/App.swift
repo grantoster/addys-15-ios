@@ -203,6 +203,8 @@ struct SettingsView: View {
                     if let code = model.code { model.setUp(role: model.role == .addy ? .mom : .addy, code: code) }
                     dismiss()
                 }
+            } message: {
+                Text("Only for setting up a different device. A family code works with one iPad for Addy and one iPhone for Mom; switching a device that already synced can stop its updates.")
             }
         }
     }

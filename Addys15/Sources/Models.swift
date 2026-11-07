@@ -122,6 +122,14 @@ enum Money {
     static func share(_ cents: Int) -> Int { (cents * 15 + 50) / 100 }
     /// Nearest whole dollar, halves going up.
     static func roundToDollar(_ cents: Int) -> Int { ((cents + 50) / 100) * 100 }
+    /// Median rounded to the whole dollar in one step (halves go up), so it never rounds twice.
+    static func medianDollar(_ xs: [Int]) -> Int {
+        let s = xs.sorted()
+        guard !s.isEmpty else { return 0 }
+        let m = s.count / 2
+        if s.count % 2 == 1 { return roundToDollar(s[m]) }
+        return ((s[m - 1] + s[m]) + 100) / 200 * 100
+    }
     static func median(_ xs: [Int]) -> Int {
         let s = xs.sorted()
         guard !s.isEmpty else { return 0 }

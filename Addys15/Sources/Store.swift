@@ -68,6 +68,7 @@ final class AppModel {
 
     func stage(_ id: String) -> Stage { ledger.statuses[id]?.stage ?? .ready }
     func price(_ item: Item) -> Int? { ledger.statuses[item.id]?.priceCents ?? item.priceCents }
+    func momSetPrice(_ id: String) -> Bool { ledger.statuses[id]?.priceCents != nil }
 
     var activeItems: [Item] {
         items.values.filter { stage($0.id) != .removed }.sorted { $0.createdAt > $1.createdAt }
@@ -119,7 +120,7 @@ final class AppModel {
 
     func buildItem(from d: Draft, result r: ListingResult) -> Item {
         let prices = r.comps.map(\.priceCents).filter { $0 > 0 }
-        let suggested = prices.count >= 3 ? max(100, Money.roundToDollar(Money.median(prices))) : nil
+        let suggested = prices.count >= 3 ? max(100, Money.medianDollar(prices)) : nil
         let photos = d.allPhotos
         return Item(id: d.id, createdAt: d.createdAt, updatedAt: Date(), kind: d.kind ?? .other,
                     brand: d.brand.trimmingCharacters(in: .whitespacesAndNewlines),

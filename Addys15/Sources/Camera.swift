@@ -67,7 +67,7 @@ final class CameraModel: NSObject, ObservableObject, AVCapturePhotoCaptureDelega
     }
 
     /// Takes one photo. Returns nil if the camera isn't running or is already busy.
-    func capture() async -> UIImage? {
+    @MainActor func capture() async -> UIImage? {
         guard state == .running, continuation == nil else { return nil }
         let angle = coordinator?.videoRotationAngleForHorizonLevelCapture
         return await withCheckedContinuation { cont in

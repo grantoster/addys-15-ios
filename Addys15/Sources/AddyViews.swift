@@ -521,10 +521,10 @@ struct TapView: View {
         HStack(spacing: 16 * k) {
             Text("How many pieces?").font(.kid(22 * k, .bold)).foregroundStyle(Theme.ink)
             Spacer()
-            Button { draft.pieces = max(2, draft.pieces - 1) } label: { Image(systemName: "minus.circle.fill") }
+            Button { draft.pieces = max(2, draft.pieces - 1) } label: { Image(systemName: "minus.circle.fill").frame(minWidth: 44, minHeight: 44) }
                 .accessibilityLabel("Fewer pieces")
             Text("\(draft.pieces)").font(.kid(34 * k, .heavy)).frame(minWidth: 50 * k)
-            Button { draft.pieces = min(30, draft.pieces + 1) } label: { Image(systemName: "plus.circle.fill") }
+            Button { draft.pieces = min(30, draft.pieces + 1) } label: { Image(systemName: "plus.circle.fill").frame(minWidth: 44, minHeight: 44) }
                 .accessibilityLabel("More pieces")
         }
         .font(.system(size: 44 * k)).foregroundStyle(Theme.purple)
@@ -598,7 +598,7 @@ struct FlawCameraSheet: View {
             HStack {
                 Text("Show the spot up close").font(.kid(30 * k, .semibold)).foregroundStyle(Theme.ink)
                 Spacer()
-                Button("Cancel") { dismiss() }.font(.kid(20, .heavy)).foregroundStyle(Theme.purple)
+                Button("Cancel") { dismiss() }.font(.kid(20, .heavy)).foregroundStyle(Theme.purple).frame(minWidth: 44, minHeight: 44)
             }
             ZStack {
                 RoundedRectangle(cornerRadius: 28).fill(Theme.ink)
@@ -720,7 +720,7 @@ struct DoneView: View {
                             priceRow(price)
                             if !item.comps.isEmpty {
                                 DisclosureGroup(isExpanded: $showComps) {
-                                    CompList(comps: item.comps, k: k)
+                                    CompList(comps: item.comps, k: k, linksEnabled: false)
                                 } label: {
                                     Text("See the \(item.comps.count) similar \(item.comps.count == 1 ? "one" : "ones") I found")
                                         .font(.kid(18 * k, .heavy)).foregroundStyle(Theme.purple)
@@ -759,14 +759,23 @@ struct DoneView: View {
             HStack(alignment: .center, spacing: 16 * k) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Price").font(.kid(18 * k, .bold)).foregroundStyle(Theme.muted)
-                    HStack(spacing: 14 * k) {
-                        Button { model.setAddyPrice(item.id, max(100, price - 100)) } label: { Image(systemName: "minus.circle.fill") }
-                            .accessibilityLabel("Lower the price by a dollar").disabled(price <= 100)
+                    if model.momSetPrice(item.id) {
                         Text(Money.price(price)).font(.kid(44 * k, .heavy)).foregroundStyle(Theme.ink).monospacedDigit()
-                        Button { model.setAddyPrice(item.id, price + 100) } label: { Image(systemName: "plus.circle.fill") }
+                        Text("Mom set the price").font(.kid(16 * k, .bold)).foregroundStyle(Theme.muted)
+                    } else {
+                        HStack(spacing: 14 * k) {
+                            Button { model.setAddyPrice(item.id, max(100, price - 100)) } label: {
+                                Image(systemName: "minus.circle.fill").frame(minWidth: 44, minHeight: 44)
+                            }
+                            .accessibilityLabel("Lower the price by a dollar").disabled(price <= 100)
+                            Text(Money.price(price)).font(.kid(44 * k, .heavy)).foregroundStyle(Theme.ink).monospacedDigit()
+                            Button { model.setAddyPrice(item.id, price + 100) } label: {
+                                Image(systemName: "plus.circle.fill").frame(minWidth: 44, minHeight: 44)
+                            }
                             .accessibilityLabel("Raise the price by a dollar")
+                        }
+                        .font(.system(size: 36 * k)).foregroundStyle(Theme.purple)
                     }
-                    .font(.system(size: 36 * k)).foregroundStyle(Theme.purple)
                     if let r = item.compRange {
                         Text("Similar ones sell for \(Money.price(r.low)) to \(Money.price(r.high))")
                             .font(.kid(16 * k, .bold)).foregroundStyle(Theme.muted)
@@ -840,13 +849,15 @@ struct FlowChips: View {
 struct CompList: View {
     let comps: [Comp]
     let k: CGFloat
+    /// Off on Addy's screens, so she can't leave the app for other websites.
+    var linksEnabled = true
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             ForEach(comps.indices, id: \.self) { i in
                 let c = comps[i]
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
                     VStack(alignment: .leading, spacing: 2) {
-                        if let url = URL(string: c.url), url.scheme?.hasPrefix("http") == true {
+                        if linksEnabled, let url = URL(string: c.url), url.scheme?.hasPrefix("http") == true {
                             Link(c.title.isEmpty ? c.source : c.title, destination: url)
                                 .font(.kid(16 * k, .bold)).foregroundStyle(Theme.purpleText).lineLimit(2)
                         } else {
@@ -879,7 +890,8 @@ struct PiggyView: View {
         let earned = model.earnedCents
         let active = model.activeItems
         let sold = model.items(in: .sold)
-        let forSale = active.count - sold.count
+        let waiting = model.items(in: .ready).count
+        let forSale = model.items(in: .listed).count
         ZStack(alignment: .top) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 26 * k) {
@@ -901,9 +913,9 @@ struct PiggyView: View {
                     .accessibilityElement(children: .combine)
 
                     HStack(spacing: 16 * k) {
-                        stat("\(active.count)", "Listed")
-                        stat("\(sold.count)", "Sold")
+                        stat("\(waiting)", "Waiting for Mom")
                         stat("\(forSale)", "For sale")
+                        stat("\(sold.count)", "Sold")
                     }
 
                     if let goal = goals.first(where: { $0 > earned }) {
@@ -928,10 +940,10 @@ struct PiggyView: View {
                         Text("My badges").font(.kid(26 * k, .semibold))
                         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12 * k), count: 3), spacing: 12 * k) {
                             badge("First sale", "star.fill", sold.count >= 1)
-                            badge("10 listed", "tshirt.fill", active.count >= 10)
+                            badge("10 made", "tshirt.fill", active.count >= 10)
                             badge("$10 earned", "dollarsign.circle.fill", earned >= 1000)
                             badge("$25 earned", "gift.fill", earned >= 2500)
-                            badge("50 listed", "trophy.fill", active.count >= 50)
+                            badge("50 made", "trophy.fill", active.count >= 50)
                             badge("$50 earned", "crown.fill", earned >= 5000)
                         }
                     }
@@ -941,7 +953,7 @@ struct PiggyView: View {
                             Text("Recent sales").font(.kid(26 * k, .semibold))
                             Card(padding: 0, radius: 26 * k) {
                                 VStack(spacing: 0) {
-                                    ForEach(Array(sold.prefix(8).enumerated()), id: \.element.id) { i, item in
+                                    ForEach(Array(sold.enumerated()), id: \.element.id) { i, item in
                                         if i > 0 { Divider().padding(.horizontal, 22 * k) }
                                         saleRow(item)
                                     }

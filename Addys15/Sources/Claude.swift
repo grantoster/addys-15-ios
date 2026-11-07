@@ -93,8 +93,9 @@ struct Claude {
 
         Never guess a brand or size you can't actually read; use null instead. "set" means a matching outfit sold together.
         """
+        var unused = Set<String>()
         let reply = try await send(content: imageParts(images, maxSide: 1024) + [["type": "text", "text": prompt]],
-                                   maxTokens: 800, tools: nil)
+                                   maxTokens: 800, tools: nil, searchedURLs: &unused)
         guard let json = Self.jsonObject(in: reply) else { throw ClaudeError.badReply }
         return try JSONDecoder().decode(Identified.self, from: json)
     }
@@ -126,8 +127,9 @@ struct Claude {
         {"title": "...", "description": "...", "comps": [{"title": "...", "price": 12.50, "source": "eBay (sold)", "url": "https://..."}]}
         """
         let tools: [[String: Any]] = [["type": "web_search_20260318", "name": "web_search", "max_uses": 5]]
+        var seen = Set<String>()
         let reply = try await send(content: imageParts(images, maxSide: 1024) + [["type": "text", "text": prompt]],
-                                   maxTokens: 3000, tools: tools)
+                                   maxTokens: 3000, tools: tools, searchedURLs: &seen)
         guard let data = Self.jsonObject(in: reply),
               let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               let title = obj["title"] as? String, let desc = obj["description"] as? String else { throw ClaudeError.badReply }
@@ -135,6 +137,8 @@ struct Claude {
             let price: Double? = (c["price"] as? Double) ?? (c["price"] as? Int).map { Double($0) }
                 ?? (c["price"] as? String).flatMap { Money.parse($0) }.map { Double($0) / 100 }
             guard let p = price, p > 0 else { return nil }
+            // Only prices from pages the search actually returned; anything else is dropped.
+            guard let u = c["url"] as? String, seen.contains(Self.normalize(u)) else { return nil }
             return Comp(title: c["title"] as? String ?? "", priceCents: Money.cents(p),
                         source: c["source"] as? String ?? "", url: c["url"] as? String ?? "")
         }
@@ -152,13 +156,19 @@ struct Claude {
     }
 
     /// Sends one user turn and returns the final reply's text, continuing if the server pauses mid-search.
-    private func send(content: [[String: Any]], maxTokens: Int, tools: [[String: Any]]?) async throws -> String {
+    private func send(content: [[String: Any]], maxTokens: Int, tools: [[String: Any]]?,
+                      searchedURLs: inout Set<String>) async throws -> String {
         var messages: [[String: Any]] = [["role": "user", "content": content]]
         for _ in 0..<4 {
             var body: [String: Any] = ["model": Self.model, "max_tokens": maxTokens, "messages": messages]
             if let tools { body["tools"] = tools }
             let reply = try await post(body)
             let blocks = reply["content"] as? [[String: Any]] ?? []
+            for b in blocks where b["type"] as? String == "web_search_tool_result" {
+                for r in b["content"] as? [[String: Any]] ?? [] {
+                    if let u = r["url"] as? String { searchedURLs.insert(Self.normalize(u)) }
+                }
+            }
             if reply["stop_reason"] as? String == "pause_turn" {
                 messages.append(["role": "assistant", "content": blocks])
                 continue
@@ -185,6 +195,17 @@ struct Claude {
             throw ClaudeError.http(code, msg)
         }
         return obj
+    }
+
+    /// Host + path, lowercased, without "www." or a trailing slash, for matching URLs.
+    static func normalize(_ s: String) -> String {
+        guard let c = URLComponents(string: s.trimmingCharacters(in: .whitespaces)), let host = c.host?.lowercased() else {
+            return s.lowercased()
+        }
+        let h = host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
+        var p = c.path.lowercased()
+        while p.hasSuffix("/") { p.removeLast() }
+        return h + p
     }
 
     /// The JSON object in a reply (from the first "{" to the last "}").
