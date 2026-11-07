@@ -7,13 +7,30 @@ on:
     - cron: '41 15 1 * *'
   push:
     branches: [main]
-    paths-ignore: [README.md, cloudkit/**]
+    paths-ignore: [README.md, cloudkit/**, .github/last-testflight-refresh]
 
 concurrency:
   group: testflight
   cancel-in-progress: false
 
 jobs:
+  # Public repos lose scheduled runs after 60 days without commits; a tiny monthly commit keeps the schedule on.
+  keepalive:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Record this refresh
+        run: |
+          date -u +%Y-%m-%dT%H:%M:%SZ > .github/last-testflight-refresh
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git add .github/last-testflight-refresh
+          git commit -m "Monthly TestFlight refresh [skip ci]" || echo "nothing to commit"
+          git push
+
   testflight:
     runs-on: macos-15-intel
     timeout-minutes: 60

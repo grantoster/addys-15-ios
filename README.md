@@ -24,7 +24,7 @@ Facebook has no public API for personal Marketplace listings, so posting is copy
    it on the iPad; otherwise paste it in the app's Settings).
 
 ## Building
-Every push to `main`, the 1st of each month, or Actions > iOS > Run workflow builds on a macOS
+Every push to `main`, the 1st of each month (with a tiny keep-alive commit so GitHub never pauses the schedule on this public repo), or Actions > iOS > Run workflow builds on a macOS
 runner and uploads to TestFlight. The monthly build keeps TestFlight's 90-day expiry from removing
 the app.
 
