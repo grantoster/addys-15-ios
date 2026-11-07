@@ -65,7 +65,10 @@ enum ClaudeError: LocalizedError {
 }
 
 struct Claude {
+    /// Writes the listing and looks up prices (up to 5 web searches).
     static let model = "claude-sonnet-5-5"
+    /// Reads the photos (brand, type, size from the tag): the cheaper model is plenty here.
+    static let photoModel = "claude-haiku-5-5"
     let key: String
 
     init(key: String) { self.key = key }
@@ -95,7 +98,7 @@ struct Claude {
         """
         var unused = Set<String>()
         let reply = try await send(content: imageParts(images, maxSide: 1024) + [["type": "text", "text": prompt]],
-                                   maxTokens: 800, tools: nil, searchedURLs: &unused)
+                                   maxTokens: 800, tools: nil, searchedURLs: &unused, model: Self.photoModel)
         guard let json = Self.jsonObject(in: reply) else { throw ClaudeError.badReply }
         return try JSONDecoder().decode(Identified.self, from: json)
     }
@@ -157,10 +160,10 @@ struct Claude {
 
     /// Sends one user turn and returns the final reply's text, continuing if the server pauses mid-search.
     private func send(content: [[String: Any]], maxTokens: Int, tools: [[String: Any]]?,
-                      searchedURLs: inout Set<String>) async throws -> String {
+                      searchedURLs: inout Set<String>, model: String = Claude.model) async throws -> String {
         var messages: [[String: Any]] = [["role": "user", "content": content]]
         for _ in 0..<4 {
-            var body: [String: Any] = ["model": Self.model, "max_tokens": maxTokens, "messages": messages]
+            var body: [String: Any] = ["model": model, "max_tokens": maxTokens, "messages": messages]
             if let tools { body["tools"] = tools }
             let reply = try await post(body)
             let blocks = reply["content"] as? [[String: Any]] ?? []
